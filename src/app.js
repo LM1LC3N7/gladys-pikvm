@@ -113,7 +113,8 @@ export class PikvmApp {
     this.infoDue = -Infinity;
     this.infoHold = undefined;
     // Commands.
-    this.counter = 0;
+    /** Power on / Reset sent (counted in beforeSend): a kept shutdown never goes after a newer one. */
+    this.startMark = 0;
     this.epoch = 0;
     this.stopGuardEnd = -Infinity;
     this.commandBusy = false;
@@ -498,10 +499,14 @@ export class PikvmApp {
 
   /** The credentials of a request: the headers, or the 2FA session token; null: none usable. */
   auth() {
-    const c = this.config;
+    return this.authFor(this.config);
+  }
+
+  /** The credentials of configuration `c` (frozen by the clients built on it). */
+  authFor(c) {
     if (c.error) return null;
     if (c.twoFactor) {
-      return this.token && this.tokenFor === this.accountKey() ? { token: this.token } : null;
+      return this.token && this.tokenFor === this.accountKey(c) ? { token: this.token } : null;
     }
     return { username: c.username, password: c.password };
   }
@@ -515,19 +520,25 @@ export class PikvmApp {
     this.logger.warn('PiKVM: the 2FA session ended; log in again with a new code');
   }
 
-  /** A client of this session (address and pin frozen; credentials read at each request). */
+  /** A client of this session (address, pin and credentials frozen). */
   sessionClient() {
     if (!this.client) this.client = this.newClient(this.abort.signal);
     return this.client;
   }
 
+  /**
+   * A client of one PiKVM: its address, pin and credentials are those of `c`
+   * when it is built, for its whole life. A configuration saved meanwhile
+   * (another PiKVM, another account) never sends its credentials through it.
+   */
   newClient(signal, c = this.config, pin = this.pin()) {
+    const creds = this.authFor(c);
     return createKvmd({
       host: c.host,
       port: c.port,
       pin,
-      auth: () => this.auth(),
-      secrets: () => [c.password, this.token],
+      auth: () => creds,
+      secrets: () => [c.password, creds?.token],
       request: this.request,
       signal,
     });
@@ -945,16 +956,14 @@ export class PikvmApp {
     const pin = this.pin();
     if (!pin) throw this.refusal('noPin');
     if (this.blocked) throw this.refusal('credentialsRefused');
-    if (!this.auth()) throw this.refusal('codeNeeded');
+    const auth = this.auth();
+    if (!auth) throw this.refusal('codeNeeded');
+    // Address, pin and credentials of the PiKVM clicked, frozen for every try.
     const client = this.newClient(this.stopAbort.signal, c, pin);
-    const beforeSend = () => {
-      this.counter += 1;
-    };
     for (let attempt = 0; ; attempt += 1) {
       try {
         await client.power('off', {
           timeout: Math.max(500, Math.min(TIMINGS.readTimeout, deadline - this.mono())),
-          beforeSend,
         });
         this.dropPending('taken');
         this.unconfirmed = false;
@@ -973,12 +982,14 @@ export class PikvmApp {
             throw this.refusal('unconfirmed');
           }
           if (err?.kind === 'pin') this.pinError = err;
-          if (err?.kind === 'auth' || err?.kind === 'unauth') this.dropToken(this.auth()?.token);
+          if (err?.kind === 'auth' || err?.kind === 'unauth') this.dropToken(auth.token);
           this.noteResult(T.result.nothingSent(err));
           throw this.refusal('nothingSent', err);
         }
         const wait = TIMINGS.stopRetries[attempt];
         if (wait === undefined || this.mono() + wait + 300 > deadline || this.closed) {
+          // Kept only for the PiKVM still configured (never for another one).
+          if (c.address !== this.config.address) throw this.refusal('nothingSent', err);
           this.keepPending();
           throw this.refusal('stopKept', err);
         }
@@ -1028,6 +1039,8 @@ export class PikvmApp {
         this.sideError(err);
         throw this.refusal('readFailed', err);
       }
+      // A read of the machine off ends a kept shutdown, this one too.
+      this.considerPending(atx);
       if (atx.enabled !== true) throw this.refusal('atxDisabled');
       if (atx.busy !== false) throw this.refusal('atxBusy');
       if (atx.power === undefined) throw this.refusal('stateUnknown');
@@ -1050,9 +1063,15 @@ export class PikvmApp {
       const beforeSend = () => {
         this.checkGuarded(key, button, ownEpoch);
         if (this.mono() > deadline - 100) throw this.refusal('tooLate');
-        this.counter += 1;
         this.lastCommandMono = this.mono();
-        if (button.stop) this.setStopGuard();
+        if (button.stop) {
+          this.setStopGuard();
+        } else {
+          // Power on or Reset leaves now, answered or not: a kept shutdown is
+          // never sent over it (the machine may be starting).
+          this.startMark += 1;
+          this.dropPending('newer');
+        }
       };
       try {
         await client.power(button.action, {
@@ -1071,8 +1090,6 @@ export class PikvmApp {
         this.noteResult(T.result.nothingSent(err));
         throw this.refusal('nothingSent', err);
       }
-      // A newer command left: a kept shutdown is not sent again over it.
-      if (!button.stop) this.dropPending('newer');
       this.unconfirmed = false;
       this.noteResult(T.result.sent(key));
       this.scheduleFollowUps(this.confirmDelays(key), this.wantedPower(key));
@@ -1105,16 +1122,25 @@ export class PikvmApp {
     this.followUps.clear();
     const generation = this.generation;
     const epoch = this.epoch;
+    const last = Math.max(...delays);
     for (const delay of delays) {
       const timer = this.timers.setTimeout(async () => {
         this.followUps.delete(timer);
-        if (!this.current(generation) || this.readBlocker() || this.paused()) return;
+        // After the last follow-up read, "not confirmed yet" ends (a Reset, or
+        // a shutdown the system ignored, is never confirmed by the LED); the
+        // result stays in the status for 10 min.
+        const final = delay === last;
+        if (final) this.unconfirmed = false;
+        if (!this.current(generation) || this.readBlocker() || this.paused()) {
+          if (final) this.background(this.publishTransport());
+          return;
+        }
         // A read that answers an older command never confirms a newer one.
         if (wantOn && this.epoch !== epoch) return;
         try {
           const atx = await this.sessionClient().atx({ timeout: TIMINGS.readTimeout });
           if (!this.current(generation)) return;
-          if (atx.enabled === true && atx.power === wantOn) {
+          if (typeof wantOn === 'boolean' && atx.enabled === true && atx.power === wantOn) {
             this.unconfirmed = false;
             for (const t of this.followUps) this.timers.clearTimeout(t);
             this.followUps.clear();
@@ -1123,6 +1149,7 @@ export class PikvmApp {
           await this.takeRead(atx);
         } catch (err) {
           this.sideError(err);
+          if (final) this.background(this.publishTransport());
         }
       }, delay);
       this.followUps.add(timer);
@@ -1204,15 +1231,23 @@ export class PikvmApp {
     this.stopWorking = true;
     try {
       const client = this.newClient(this.stopAbort.signal, c, pin);
+      const mark = this.startMark;
       // A read started now (after the click): it decides, never an older one.
       const atx = await client.atx({ timeout: TIMINGS.readTimeout });
-      if (this.memory.pendingStop !== pending) return;
+      // Dropped meanwhile, or another configuration saved (another PiKVM or
+      // account): nothing sent through the old client.
+      if (this.memory.pendingStop !== pending || this.config !== c) return;
       if (atx.enabled === true && atx.power === false) {
         this.dropPending('applied');
         this.noteResult(T.result.confirmedOff);
         return;
       }
       if (atx.enabled !== true || atx.busy !== false || atx.power !== true) return;
+      // A Power on or Reset left since the read: never a shutdown over it.
+      if (this.startMark !== mark) {
+        this.dropPending('newer');
+        return;
+      }
       try {
         await client.power('off', { timeout: TIMINGS.readTimeout });
         this.dropPending('taken');
@@ -1258,6 +1293,7 @@ export class PikvmApp {
     if (c.error) return T.configError(c.error);
     const generation = this.generation;
     const pin = this.pin();
+    let used;
     try {
       if (!pin) {
         const fp = await this.readFingerprint({ host: c.host, port: c.port });
@@ -1269,6 +1305,7 @@ export class PikvmApp {
       }
       const auth = this.auth();
       if (!auth) return this.tokenLost ? T.codeAgain : T.codeNeeded;
+      used = auth;
       // Never a read sooner than the interval after the last one; while the
       // account is refused (no read runs then), Test may try at once (once
       // per 10 s, the Test spacing).
@@ -1328,8 +1365,14 @@ export class PikvmApp {
         });
         return T.credentialsRefused;
       }
-      if ((err?.kind === 'auth' || err?.kind === 'unauth') && this.current(generation)) {
-        this.dropToken(this.token);
+      // Only the 2FA session token can end this way; a 401 to the headers
+      // (a proxy dropping them) is a plain failure.
+      if (
+        (err?.kind === 'auth' || err?.kind === 'unauth') &&
+        used?.token &&
+        this.current(generation)
+      ) {
+        this.dropToken(used.token);
         return T.codeAgain;
       }
       if (err?.kind === 'pin' && this.current(generation)) this.pinError = err;

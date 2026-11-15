@@ -15,7 +15,16 @@ const A = 'test/app.test.js';
 const K = 'test/kvmd.test.js';
 const G = 'test/config.test.js';
 const R = 'test/realclock.test.js';
-const ALL = [C, A, K, G, R, 'test/manifest.test.js', 'test/encoding.test.js'];
+const ALL = [
+  C,
+  A,
+  K,
+  G,
+  R,
+  'test/review-r1.test.js',
+  'test/manifest.test.js',
+  'test/encoding.test.js',
+];
 const APP = 'src/app.js';
 
 /** [name, file, from (found exactly once), to, test files]. */
@@ -124,10 +133,121 @@ export const MUTANTS = [
     [G],
   ],
   ['future pending dropped', 'src/store.js', '    p.at <= now &&', '    true &&', [G, C]],
+  [
+    'r1 I1 frozen credentials',
+    APP,
+    '      auth: () => creds,',
+    '      auth: () => this.auth(),',
+    ['test/review-r1.test.js'],
+  ],
+  [
+    'r1 I1 kept for another PiKVM',
+    APP,
+    "if (c.address !== this.config.address) throw this.refusal('nothingSent', err);",
+    '',
+    ['test/review-r1.test.js'],
+  ],
+  [
+    'r1 I1 workStop config changed',
+    APP,
+    'if (this.memory.pendingStop !== pending || this.config !== c) return;',
+    'if (this.memory.pendingStop !== pending) return;',
+    ['test/review-r1.test.js'],
+  ],
+  [
+    'r1 I2 start drops kept',
+    APP,
+    "          this.dropPending('newer');\n        }\n      };",
+    '        }\n      };',
+    ['test/review-r1.test.js'],
+  ],
+  [
+    'r1 I2 guarded read considers',
+    APP,
+    '      this.considerPending(atx);\n      if (atx.enabled !== true) throw',
+    '      if (atx.enabled !== true) throw',
+    ['test/review-r1.test.js'],
+  ],
+  [
+    'r1 R1b unanswered kept dropped',
+    APP,
+    "          this.dropPending('unconfirmed');",
+    '',
+    ['test/review-r1.test.js'],
+  ],
+  [
+    'r1 R30 click drops older',
+    APP,
+    "        this.dropPending('taken');\n        this.unconfirmed = false;",
+    '        this.unconfirmed = false;',
+    ['test/review-r1.test.js'],
+  ],
+  [
+    'r1 R8 forced off guard',
+    APP,
+    '        if (button.stop) {\n          this.setStopGuard();',
+    '        if (button.stop) {',
+    ['test/review-r1.test.js'],
+  ],
+  [
+    'r1 R15 shutdown own signal',
+    APP,
+    'const client = this.newClient(this.stopAbort.signal, c, pin);\n    for',
+    'const client = this.sessionClient();\n    for',
+    ['test/review-r1.test.js'],
+  ],
+  [
+    'r1 R39 budget',
+    APP,
+    '|| this.mono() + wait + 300 > deadline ||',
+    '||',
+    ['test/realclock.test.js'],
+  ],
+  [
+    'r1 m1 boolean wantOn',
+    APP,
+    "if (typeof wantOn === 'boolean' && atx.enabled",
+    'if (atx.enabled',
+    ['test/review-r1.test.js'],
+  ],
+  [
+    'r1 m2 final clears',
+    APP,
+    '        if (final) this.unconfirmed = false;',
+    '',
+    ['test/review-r1.test.js'],
+  ],
+  ['r1 m3 token only', APP, '        used?.token &&', '', ['test/review-r1.test.js']],
+  [
+    'r1 R20 shutdown in a pause',
+    APP,
+    "    if (!auth) throw this.refusal('codeNeeded');\n",
+    "    if (!auth) throw this.refusal('codeNeeded');\n    if (this.paused()) throw this.refusal('paused', 1);\n",
+    [C],
+  ],
+  [
+    'r1 R21 shutdown during a command',
+    APP,
+    "    if (!auth) throw this.refusal('codeNeeded');\n",
+    "    if (!auth) throw this.refusal('codeNeeded');\n    if (this.commandBusy) throw this.refusal('busy');\n",
+    [C],
+  ],
 ];
 
 /** Equivalent mutants, with the reason (no test can tell them apart). */
 export const EQUIVALENT = [
+  [
+    'r1 R29 loop reads drop kept',
+    APP,
+    '    this.considerPending(atx);\n    await this.publishStates();',
+    'the kept shutdown reads the ATX itself every 10 s and drops itself on a read of the machine off; a loop read only does it earlier',
+  ],
+  [
+    'workStop start counter',
+    APP,
+    '      if (this.startMark !== mark) {',
+    'a Power on / Reset that leaves drops the kept shutdown in its beforeSend, which the check just after the read already sees (no await between it and the send); kept as a second lock',
+  ],
   [
     'stop arrived during the read of a power on / reset',
     APP,

@@ -47,12 +47,15 @@ With 2FA and no session, the Shut down button cannot leave either.
 
 **Shut down** is a short press of the power button (kvmd `off`, which does nothing when the machine is
 already off): the operating system shuts down cleanly, as with the button of the case. It needs no option,
-and it is not held back by a pause, a read or another command in flight. It is refused only when nothing can
-reach the PiKVM safely: integration not configured, certificate not pinned, credentials refused, or 2FA
-without a session. When the PiKVM does not take it (busy, error 5xx or 429, unreachable), it is tried again
+and it is not held back by a pause, a read or another command in flight. It is not done ("nothing sent") only
+when nothing can reach the PiKVM safely, or when the PiKVM refuses it: integration not configured,
+certificate not pinned or changed, credentials refused, 2FA without a session, an answer of the PiKVM that
+refuses it (redirection, 4xx such as ATX disabled, rights or not found) or that is not understood. When the PiKVM does not take it (busy, error 5xx or 429, unreachable), it is tried again
 within the 3.5 s Gladys waits; still not taken, it is kept (also across a restart) and sent again by reads
 made every 10 s, only while they show the machine on, 3 times and 2 minutes after the click at most, and
-dropped as soon as a read shows the machine off. A shutdown that left without an answer is reported as
+dropped as soon as a read shows the machine off, or as soon as a Power on or Reset leaves (even without an
+answer: the machine may be starting). It is kept only for the PiKVM it was sent to: saving another address
+drops it, and its tries always use the address, certificate and credentials of the PiKVM clicked. A shutdown that left without an answer is reported as
 "sent, without confirmation" and is not sent again by itself (a second press could be taken too).
 
 **Power on**, **Force power off** (the power button held 5 s: data not saved is lost) and **Reset** (a hard

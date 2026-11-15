@@ -51,12 +51,15 @@ ensuite rien n'est lu ni envoyé, et le statut demande un nouveau code. En 2FA s
 **Éteindre** est un appui court sur le bouton d'alimentation (kvmd `off`, qui ne fait rien quand la machine
 est déjà éteinte) : le système s'arrête proprement, comme avec le bouton du boîtier. Il ne demande aucune
 option et n'est retenu ni par une pause, ni par une lecture, ni par une autre commande en cours. Il n'est
-refusé que si rien ne peut joindre le PiKVM sûrement : intégration non configurée, certificat non épinglé,
-identifiants refusés, ou 2FA sans session. Quand le PiKVM ne le prend pas (occupé, erreur 5xx ou 429,
+non fait (« rien envoyé ») que si rien ne peut joindre le PiKVM sûrement, ou si le PiKVM le refuse :
+intégration non configurée, certificat non épinglé ou changé, identifiants refusés, 2FA sans session, réponse
+du PiKVM qui le refuse (redirection, 4xx comme ATX désactivé, droits ou introuvable) ou réponse non comprise. Quand le PiKVM ne le prend pas (occupé, erreur 5xx ou 429,
 injoignable), il est réessayé dans les 3,5 s qu'attend Gladys ; toujours pas pris, il est gardé (aussi après
 un redémarrage) et renvoyé par des lectures faites toutes les 10 s, seulement tant qu'elles montrent la
 machine allumée, 3 fois et 2 minutes après le clic au plus, puis abandonné dès qu'une lecture montre la
-machine éteinte. Un arrêt parti sans réponse est signalé « envoyé, sans confirmation » et n'est pas renvoyé
+machine éteinte, ou dès qu'un Allumer ou un Reset part (même sans réponse : la machine démarre peut-être). Il
+n'est gardé que pour le PiKVM visé : enregistrer une autre adresse l'abandonne, et ses essais gardent
+toujours l'adresse, le certificat et les identifiants du PiKVM cliqué. Un arrêt parti sans réponse est signalé « envoyé, sans confirmation » et n'est pas renvoyé
 de lui-même (un second appui pourrait être pris aussi).
 
 **Allumer**, **Forcer l'extinction** (bouton d'alimentation maintenu 5 s : les données non enregistrées sont

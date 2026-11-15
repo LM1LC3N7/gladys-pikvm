@@ -35,11 +35,21 @@ Handoff document: what is done, what was decided, what comes next.
   2 min and 3 answered sends at most, also after a restart (it waits for the
   configuration and a read, never sent from /data alone). A send without an
   answer is never resent (a second press could be taken by the OS).
+- **Review r1 (I1)**: every client (session, shutdown, kept shutdown) freezes
+  the address, pin and credentials of the configuration it was built on; a
+  kept shutdown is worked on only while that same configuration is current,
+  and a shutdown whose tries end after another address was saved is not kept.
+- **Review r1 (I2), safest rule chosen**: a Power on or Reset whose first
+  byte leaves (`beforeSend`, answered or not) drops the kept shutdown at once,
+  and `workStop` compares the start counter (`startMark`) right before its own
+  send; the read of a guarded command goes through `considerPending` too. The
+  latest click wins, a shutdown is never sent over a machine that may be
+  starting. The unused general `counter` is removed.
 - **Stop guard 60 s** after a shutdown or forced power off (Power on and Reset
   refused), set in memory before the first byte, written to /data in the
   background: a failed /data write never holds back a shutdown; after a
-  restart within 60 s with a failed write, the guard is lost (spacing and the
-  fresh read still apply).
+  restart within 60 s with a failed write, the guard is lost (the fresh read still
+  applies; the 30 s spacing is in memory only and starts again at a restart).
 - **2FA**: kvmd needs the current code appended to the password; with
   per-request headers that would need the TOTP secret, which is not kept. So a
   configuration-screen action takes the code once and opens a session

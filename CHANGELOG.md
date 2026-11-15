@@ -26,4 +26,6 @@ the notes of the version's GitHub Release.
   reads showing the machine on (3 times, 2 min at most).
 - Power on, Force power off and Reset off by default, decided on a fresh read,
   one per 30 s, refused for 1 min after a shutdown.
+- A kept shutdown is dropped as soon as a Power on or Reset leaves, and its
+  tries keep the address, certificate and credentials of the PiKVM clicked.
 - 429/5xx pause (1 min to 6 h) kept in /data; the last read paces a restart.

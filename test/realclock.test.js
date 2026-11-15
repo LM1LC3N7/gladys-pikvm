@@ -68,3 +68,39 @@ test('real clock x20: a kept shutdown is worked on every 10 s, measured, then ta
   await waitFor(() => pv.powerActions.includes('off'), 'taken', 6000);
   await waitFor(() => app.memory.pendingStop === null, 'dropped', 6000);
 });
+
+test('real clock: a shutdown busy without end is acked within the 3.5 s budget (R39)', async (t) => {
+  const pv = await fakePikvm();
+  t.after(() => pv.close());
+  const clock = realClock({ speed: 1 });
+  t.after(() => clock.close());
+  const raw = { host: pv.address, username: USER, password: PASSWORD };
+  const device = createdDevice(pv.address);
+  const gladys = createFakeGladys({ config: raw, devices: [device] });
+  const logger = { debug() {}, info() {}, warn() {}, error() {} };
+  const app = new PikvmApp({
+    gladys,
+    logger,
+    store: memoryStore({ pins: { [pv.address]: pv.fingerprint } }),
+    now: clock.now,
+    mono: clock.monotonic,
+    timers: clock.timers,
+  });
+  registerHandlers(gladys, app, logger);
+  t.after(() => app.shutdown());
+  await within(gladys.connect(), 'connect');
+  pv.latencyMs = (r) => (r.method === 'POST' ? 600 : 0);
+  pv.replyFor = (r) =>
+    r.method === 'POST'
+      ? { status: 409, body: { ok: false, result: { error: 'AtxIsBusyError' } } }
+      : undefined;
+  const started = performance.now();
+  const res = await within(
+    gladys.fake.setValue(device, { external_id: `${device.external_id}:shutdown` }, 1),
+    'ack',
+  );
+  const took = performance.now() - started;
+  assert.equal(res.success, false);
+  assert.ok(took < 3500, `acked after ${Math.round(took)} ms`);
+  assert.ok(pv.count('POST') <= 3, `${pv.count('POST')} tries`);
+});

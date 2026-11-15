@@ -21,6 +21,7 @@ const error = (status, name, msg) => ({
 
 export async function fakePikvm({ cert = certs.device, ...options } = {}) {
   const sockets = new Set();
+  const timers = new Set();
   const pv = {
     atx: { enabled: true, busy: false, leds: { power: false, hdd: false } },
     hw: { health: { temp: { cpu: 47.25 } }, platform: { model: 'v4plus', board: 'rpi4' } },
@@ -85,11 +86,13 @@ export async function fakePikvm({ cert = certs.device, ...options } = {}) {
         (action === 'on' && !wasOn) || ((action === 'off' || action === 'off_hard') && wasOn);
       if (change || action === 'reset_hard') {
         pv.atx.busy = true;
-        setTimeout(() => {
+        const timer = setTimeout(() => {
+          timers.delete(timer);
           if (action === 'on') pv.atx.leds.power = true;
           if (action === 'off' || action === 'off_hard') pv.atx.leds.power = false;
           pv.atx.busy = false;
         }, pv.applyDelayMs);
+        timers.add(timer);
       }
       return ok({});
     }
@@ -136,6 +139,7 @@ export async function fakePikvm({ cert = certs.device, ...options } = {}) {
   pv.port = server.address().port;
   pv.address = `127.0.0.1:${pv.port}`;
   pv.close = async () => {
+    for (const timer of timers) clearTimeout(timer);
     for (const s of sockets) s.destroy();
     await new Promise((resolve) => server.close(() => resolve()));
   };

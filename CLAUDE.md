@@ -57,6 +57,9 @@ scripts/mutants.mjs               mutants of the guards (list and runner)
   a time, one per 30 s, and leaves within 3.5 s or not at all. Power on and
   Reset are refused for 60 s after a shutdown or forced power off (guard in
   /data).
+- **A kept shutdown never goes over a newer Power on / Reset** (dropped in
+  their `beforeSend`, `startMark` checked before its send), nor through a
+  client of an older configuration (credentials frozen per client).
 - **Nothing sent before a stop leaves after it**: the stop count (`epoch`) is
   checked after the read and in `beforeSend`.
 - The password goes only to the configured address, in the kvmd headers, on a

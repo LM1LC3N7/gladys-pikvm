@@ -77,6 +77,7 @@ const CONFIG_ERRORS = {
 
 const FAILURES = {
   nopin: both('certificate not pinned yet', 'certificat pas encore épinglé'),
+  pin: both('certificate of the PiKVM changed', 'certificat du PiKVM changé'),
   auth: both('access refused (HTTP 403)', 'accès refusé (HTTP 403)'),
   unauth: both('credentials not taken (HTTP 401)', 'identifiants non pris (HTTP 401)'),
   credentials: both('user name or password refused', 'identifiant ou mot de passe refusé'),
