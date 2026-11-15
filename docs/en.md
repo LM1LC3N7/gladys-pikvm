@@ -54,8 +54,8 @@ refuses it (redirection, 4xx such as ATX disabled, rights or not found) or that 
 within the 3.5 s Gladys waits; still not taken, it is kept (also across a restart) and sent again by reads
 made every 10 s, only while they show the machine on, 3 times and 2 minutes after the click at most, and
 dropped as soon as a read shows the machine off, or as soon as a Power on or Reset leaves (even without an
-answer: the machine may be starting). It is kept only for the PiKVM it was sent to: saving another address
-drops it, and its tries always use the address, certificate and credentials of the PiKVM clicked. A shutdown that left without an answer is reported as
+answer, or refused by the PiKVM: the machine may be starting; the status says so). It is kept only for the PiKVM it was sent to: saving another address
+drops it for good (also if the old address is saved again), and its tries always use the address, certificate and credentials of the PiKVM clicked. A shutdown that left without an answer is reported as
 "sent, without confirmation" and is not sent again by itself (a second press could be taken too).
 
 **Power on**, **Force power off** (the power button held 5 s: data not saved is lost) and **Reset** (a hard

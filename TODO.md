@@ -41,10 +41,20 @@ Handoff document: what is done, what was decided, what comes next.
   and a shutdown whose tries end after another address was saved is not kept.
 - **Review r1 (I2), safest rule chosen**: a Power on or Reset whose first
   byte leaves (`beforeSend`, answered or not) drops the kept shutdown at once,
-  and `workStop` compares the start counter (`startMark`) right before its own
-  send; the read of a guarded command goes through `considerPending` too. The
+  and `workStop` compares the start counter (`startMark`) after its read and
+  again in the `beforeSend` of its own send, at the first byte (after the TLS
+  handshake; review r2, I2b); the read of a guarded command goes through `considerPending` too. The
   latest click wins, a shutdown is never sent over a machine that may be
-  starting. The unused general `counter` is removed.
+  starting. The unused general `counter` is removed. The status says when a
+  Power on or Reset dropped the kept shutdown.
+- **Accepted gap with the fiche (review r2)**: the fiche says a 4xx, 429 or
+  redirection does not count as "left". Here a Power on or Reset whose first
+  byte was written drops the kept shutdown even when kvmd then refuses it
+  (409 busy, 400): resuming a shutdown more than 60 s old after the user asked
+  for a Reset would go against the latest intent, and a machine left on is no
+  danger. The status tells the user the kept shutdown was dropped.
+- **Another address saved drops the kept shutdown** (review r2, m2): it never
+  comes back when the old address is saved again.
 - **Stop guard 60 s** after a shutdown or forced power off (Power on and Reset
   refused), set in memory before the first byte, written to /data in the
   background: a failed /data write never holds back a shutdown; after a

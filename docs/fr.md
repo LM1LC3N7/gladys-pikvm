@@ -57,8 +57,8 @@ du PiKVM qui le refuse (redirection, 4xx comme ATX désactivé, droits ou introu
 injoignable), il est réessayé dans les 3,5 s qu'attend Gladys ; toujours pas pris, il est gardé (aussi après
 un redémarrage) et renvoyé par des lectures faites toutes les 10 s, seulement tant qu'elles montrent la
 machine allumée, 3 fois et 2 minutes après le clic au plus, puis abandonné dès qu'une lecture montre la
-machine éteinte, ou dès qu'un Allumer ou un Reset part (même sans réponse : la machine démarre peut-être). Il
-n'est gardé que pour le PiKVM visé : enregistrer une autre adresse l'abandonne, et ses essais gardent
+machine éteinte, ou dès qu'un Allumer ou un Reset part (même sans réponse, ou refusé par le PiKVM : la machine démarre peut-être ; le statut le dit). Il
+n'est gardé que pour le PiKVM visé : enregistrer une autre adresse l'abandonne pour de bon (même si l'ancienne adresse revient), et ses essais gardent
 toujours l'adresse, le certificat et les identifiants du PiKVM cliqué. Un arrêt parti sans réponse est signalé « envoyé, sans confirmation » et n'est pas renvoyé
 de lui-même (un second appui pourrait être pris aussi).
 

@@ -221,6 +221,14 @@ export const T = {
     ),
     confirmedOn: both('The machine reads on.', 'La machine se lit allumée.'),
     confirmedOff: both('The machine reads off.', 'La machine se lit éteinte.'),
+    stopCancelledByStart: both(
+      'The kept shutdown was dropped: a Power on or Reset left after it (answered or not).',
+      "L'arrêt gardé a été abandonné : un Allumer ou un Reset est parti après lui (avec ou sans réponse).",
+    ),
+    stopDroppedAddress: both(
+      'The kept shutdown was dropped: another PiKVM address was saved.',
+      "L'arrêt gardé a été abandonné : une autre adresse de PiKVM a été enregistrée.",
+    ),
     stopGivenUp: both(
       'The kept shutdown was given up (2 min or 3 sends): check the machine and click again if needed.',
       "L'arrêt gardé a été abandonné (2 min ou 3 envois) : vérifiez la machine et cliquez de nouveau si besoin.",

@@ -22,6 +22,7 @@ const ALL = [
   G,
   R,
   'test/review-r1.test.js',
+  'test/review-r2.test.js',
   'test/manifest.test.js',
   'test/encoding.test.js',
 ];
@@ -148,13 +149,6 @@ export const MUTANTS = [
     ['test/review-r1.test.js'],
   ],
   [
-    'r1 I1 workStop config changed',
-    APP,
-    'if (this.memory.pendingStop !== pending || this.config !== c) return;',
-    'if (this.memory.pendingStop !== pending) return;',
-    ['test/review-r1.test.js'],
-  ],
-  [
     'r1 I2 start drops kept',
     APP,
     "          this.dropPending('newer');\n        }\n      };",
@@ -232,10 +226,57 @@ export const MUTANTS = [
     "    if (!auth) throw this.refusal('codeNeeded');\n    if (this.commandBusy) throw this.refusal('busy');\n",
     [C],
   ],
+  [
+    'r2 I2b first byte',
+    APP,
+    "await client.power('off', { timeout: TIMINGS.readTimeout, beforeSend });",
+    "await client.power('off', { timeout: TIMINGS.readTimeout });",
+    ['test/review-r2.test.js'],
+  ],
+  [
+    'r2 m1 result keeps the drop',
+    APP,
+    '        this.noteResult(dropped ? T.join([text, T.result.stopCancelledByStart]) : text);',
+    '        this.noteResult(text);',
+    ['test/review-r2.test.js'],
+  ],
+  [
+    'r2 m2 address drops kept',
+    APP,
+    "        this.dropPending('address');",
+    '',
+    ['test/review-r2.test.js'],
+  ],
+  [
+    'r2 R13 older follow-up',
+    APP,
+    'if (wantOn && this.epoch !== epoch) return;',
+    '',
+    ['test/review-r2.test.js'],
+  ],
+  [
+    'r2 N2 badge after last follow-up',
+    APP,
+    '          if (final) this.background(this.publishTransport());\n          return;',
+    '          return;',
+    ['test/review-r2.test.js'],
+  ],
 ];
 
 /** Equivalent mutants, with the reason (no test can tell them apart). */
 export const EQUIVALENT = [
+  [
+    'r1 I1 workStop config changed (after its read)',
+    APP,
+    'if (this.memory.pendingStop !== pending || this.config !== c) return;',
+    'the beforeSend of the kept send checks this.config !== c again at the first byte, and another address saved drops the kept shutdown in start(); this check after the read only stops earlier',
+  ],
+  [
+    'r2 m1 drop note of workStop',
+    APP,
+    "    } else if (why === 'newer') {\n      this.noteResult(T.result.stopCancelledByStart);",
+    'a start always drops the kept shutdown in its beforeSend, whose result note carries the same text (tested: "r2 m1 result keeps the drop"); the workStop path is a second lock',
+  ],
   [
     'r1 R29 loop reads drop kept',
     APP,
@@ -246,7 +287,7 @@ export const EQUIVALENT = [
     'workStop start counter',
     APP,
     '      if (this.startMark !== mark) {',
-    'a Power on / Reset that leaves drops the kept shutdown in its beforeSend, which the check just after the read already sees (no await between it and the send); kept as a second lock',
+    'a Power on / Reset drops the kept shutdown in its own beforeSend, so the identity check of the pending object (after the read, and in the beforeSend of the kept send, at the first byte) already sees it; the counter is a second lock. The beforeSend itself is tested (mutant "r2 I2b first byte")',
   ],
   [
     'stop arrived during the read of a power on / reset',

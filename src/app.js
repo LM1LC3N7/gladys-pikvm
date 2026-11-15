@@ -377,6 +377,11 @@ export class PikvmApp {
     }
     if (accountChanged) this.lastReadMono = -Infinity;
     if (previous.address !== this.config.address) {
+      // A kept shutdown belongs to the PiKVM clicked: another address saved
+      // drops it (it never comes back with the old address).
+      if (previous.address !== undefined && this.memory.pendingStop?.address === previous.address) {
+        this.dropPending('address');
+      }
       this.atx = undefined;
       this.info = undefined;
       this.infoDue = -Infinity;
@@ -916,6 +921,7 @@ export class PikvmApp {
   noteResult(text) {
     this.note = { text, at: this.mono() };
     this.background(this.showStatus());
+    this.background(this.publishTransport());
   }
 
   async setValue(_device, feature, value) {
@@ -1060,6 +1066,10 @@ export class PikvmApp {
         this.epoch += 1;
       }
       const ownEpoch = this.epoch;
+      // The result says when this command dropped a kept shutdown.
+      let dropped = false;
+      const note = (text) =>
+        this.noteResult(dropped ? T.join([text, T.result.stopCancelledByStart]) : text);
       const beforeSend = () => {
         this.checkGuarded(key, button, ownEpoch);
         if (this.mono() > deadline - 100) throw this.refusal('tooLate');
@@ -1070,6 +1080,7 @@ export class PikvmApp {
           // Power on or Reset leaves now, answered or not: a kept shutdown is
           // never sent over it (the machine may be starting).
           this.startMark += 1;
+          dropped = this.pendingFor();
           this.dropPending('newer');
         }
       };
@@ -1083,15 +1094,15 @@ export class PikvmApp {
         this.sideError(err);
         if (err?.sent && !err.answered) {
           this.unconfirmed = true;
-          this.noteResult(T.result.unconfirmed);
+          note(T.result.unconfirmed);
           this.scheduleFollowUps(this.confirmDelays(key), this.wantedPower(key));
           throw this.refusal('unconfirmed');
         }
-        this.noteResult(T.result.nothingSent(err));
+        note(T.result.nothingSent(err));
         throw this.refusal('nothingSent', err);
       }
       this.unconfirmed = false;
-      this.noteResult(T.result.sent(key));
+      note(T.result.sent(key));
       this.scheduleFollowUps(this.confirmDelays(key), this.wantedPower(key));
       return undefined;
     } finally {
@@ -1188,6 +1199,11 @@ export class PikvmApp {
     if (why === 'expired' || why === 'given-up') {
       this.noteResult(T.result.stopGivenUp);
       this.logger.warn('PiKVM: the kept shutdown was given up');
+    } else if (why === 'newer') {
+      this.noteResult(T.result.stopCancelledByStart);
+      this.logger.info('PiKVM: the kept shutdown was dropped: a Power on or Reset left');
+    } else if (why === 'address') {
+      this.noteResult(T.result.stopDroppedAddress);
     }
     this.background(this.showStatus());
     this.background(this.publishTransport());
@@ -1248,12 +1264,31 @@ export class PikvmApp {
         this.dropPending('newer');
         return;
       }
+      // Checked again at the first byte (after the TLS handshake): a Power on
+      // or Reset that left meanwhile, a drop, another configuration or the
+      // container's end cancel it, nothing sent.
+      const beforeSend = () => {
+        if (
+          this.closed ||
+          this.memory.pendingStop !== pending ||
+          this.config !== c ||
+          this.startMark !== mark
+        ) {
+          throw new KvmdError('cancelled', 'kept shutdown cancelled before its first byte');
+        }
+      };
       try {
-        await client.power('off', { timeout: TIMINGS.readTimeout });
+        await client.power('off', { timeout: TIMINGS.readTimeout, beforeSend });
         this.dropPending('taken');
         this.noteResult(T.result.shutdownSent);
         this.scheduleFollowUps(TIMINGS.confirmOff, false);
       } catch (err) {
+        if (err?.kind === 'cancelled') {
+          if (this.memory.pendingStop === pending && this.startMark !== mark) {
+            this.dropPending('newer');
+          }
+          return;
+        }
         this.sideError(err);
         if (err?.sent && this.memory.pendingStop === pending) {
           pending.sends += 1;

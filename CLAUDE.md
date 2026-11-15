@@ -58,7 +58,8 @@ scripts/mutants.mjs               mutants of the guards (list and runner)
   Reset are refused for 60 s after a shutdown or forced power off (guard in
   /data).
 - **A kept shutdown never goes over a newer Power on / Reset** (dropped in
-  their `beforeSend`, `startMark` checked before its send), nor through a
+  their `beforeSend`, `startMark` checked after its read and in the `beforeSend` of its send,
+  at the first byte), nor through a
   client of an older configuration (credentials frozen per client).
 - **Nothing sent before a stop leaves after it**: the stop count (`epoch`) is
   checked after the read and in `beforeSend`.
