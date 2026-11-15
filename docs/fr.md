@@ -1,67 +1,110 @@
-# Template de démonstration
+# PiKVM
 
-Ceci est la documentation utilisateur de l'intégration. Gladys ré-héberge ce
-fichier et affiche un lien **Documentation** permanent vers lui dans l'écran
-de configuration (dans la langue de l'utilisateur, avec l'anglais en repli) —
-c'est au moment de configurer que l'utilisateur en a le plus besoin. Gardez
-les courtes indications d'accueil dans les blocs `section` du `config_schema`
-du manifest ; mettez ici le pas-à-pas détaillé (captures d'écran, dépannage…).
+Commandez l'alimentation ATX de la machine reliée à un [PiKVM](https://pikvm.org/) et lisez ses voyants
+depuis Gladys, par l'API HTTPS locale du PiKVM (kvmd). Intégration non officielle, sans lien avec PiKVM.
+**Jamais testé avec un vrai appareil** : écrit d'après la documentation officielle de l'API
+(https://docs.pikvm.org/api/) et testé contre un PiKVM simulé.
 
 ## Ce que vous obtenez
 
-Six appareils de démonstration apparaissent après l'installation : une
-station météo (vraies données Open-Meteo), un interrupteur, une lampe
-variable, une prise connectée avec mesure de puissance, un détecteur de
-mouvement et une caméra.
+Un appareil par PiKVM :
 
-## Configuration
+| Fonction                 | Nature                                  | Origine                                     |
+| ------------------------ | --------------------------------------- | ------------------------------------------- |
+| Alimentation (voyant)    | binaire, lecture seule                  | `GET /api/atx`, `leds.power`                |
+| Activité disque (voyant) | binaire, lecture seule, sans historique | `GET /api/atx`, `leds.hdd`                  |
+| Température du PiKVM     | °C, lecture seule                       | `GET /api/info?fields=hw`, toutes les 5 min |
+| Éteindre                 | bouton                                  | `POST /api/atx/power?action=off`            |
+| Allumer                  | bouton, désactivé par défaut            | `POST /api/atx/power?action=on`             |
+| Forcer l'extinction      | bouton, désactivé par défaut            | `POST /api/atx/power?action=off_hard`       |
+| Reset                    | bouton, désactivé par défaut            | `POST /api/atx/power?action=reset_hard`     |
 
-1. Ouvrez l'onglet **Configuration** de l'intégration.
-2. Renseignez la **latitude** et la **longitude** que la station météo de
-   démonstration doit observer (Paris par défaut), et choisissez votre unité
-   de température. L'**intervalle de rafraîchissement** règle la fréquence
-   de lecture de la station météo et de la puissance de la prise : toutes
-   les 5 minutes par défaut, toutes les minutes au plus.
-3. Enregistrez : les appareils apparaissent dans l'onglet **Découverte**,
-   prêts à être ajoutés.
+Les voyants demandent la carte ATX du PiKVM (ou un câblage équivalent). Quand l'ATX est désactivé sur le
+PiKVM, les voyants restent inconnus (jamais affichés éteints) et le badge de l'appareil le signale.
 
-Le réglage **Préférer la connexion locale** pilote la prise de
-démonstration : elle affiche en badge le canal réellement utilisé (local ou
-cloud), avec un point orange quand elle fonctionne en mode dégradé (local
-refusé, bascule cloud).
+## Installation
 
-## Actions
+1. Dans Gladys, ouvrez l'intégration, saisissez l'**adresse** du PiKVM (comme dans votre navigateur, ex.
+   `192.168.1.20` ; HTTPS uniquement ; `:port` si vous l'avez déplacé), l'**identifiant** et le **mot de
+   passe** de son interface web, puis enregistrez. Le mot de passe doit être en ASCII imprimable (il passe
+   dans un en-tête HTTP).
+2. Cliquez deux fois sur **Faire confiance au certificat**. Le PiKVM présente un certificat auto-signé : le
+   premier clic montre son empreinte SHA-256 et n'envoie rien d'autre. Comparez-la avec celle que votre
+   navigateur affiche pour `https://<adresse>/` (détails du certificat), puis cliquez de nouveau dans les
+   2 minutes. Vous pouvez aussi saisir l'empreinte dans la configuration. Ensuite, un autre certificat
+   arrête tout (aucun mot de passe ne lui est envoyé) jusqu'à ce que vous lui fassiez confiance de la même
+   façon.
+3. Lancez un **Scan** dans la Découverte et créez l'appareil.
 
-- **Tester le fournisseur météo** — effectue une requête en direct vers
-  Open-Meteo et affiche la température et l'humidité actuelles sous le
-  bouton.
-- **Identifier un appareil** — choisissez un de vos appareils dans la liste
-  et il se signale (la lampe de démonstration « clignote » dans les logs).
+### Double authentification (2FA)
 
-## Scènes
+Si le PiKVM demande un code, cochez **Double authentification (2FA) active**, enregistrez, puis cliquez sur
+**Se connecter avec un code 2FA** et saisissez le code du moment (6 caractères numériques) de votre application
+d'authentification. L'intégration envoie une fois le mot de passe suivi du code (comme le dit la
+documentation du PiKVM) et garde la session obtenue en mémoire seulement. Le code n'est jamais gardé. La
+session dure jusqu'au redémarrage du PiKVM ou de l'intégration (ou jusqu'à sa fermeture sur le PiKVM) :
+ensuite rien n'est lu ni envoyé, et le statut demande un nouveau code. En 2FA sans session, le bouton
+Éteindre ne peut pas partir non plus.
 
-L'intégration ajoute ses propres cartes à l'éditeur de scènes (Gladys 5.1
-ou plus récent), dans la catégorie **Intégrations** :
+## Les boutons
 
-- **Mouvement détecté** (déclencheur) — lance la scène quand un détecteur
-  de démonstration voit bouger quelque chose. Choisissez éventuellement le
-  détecteur et ce qui a bougé (personne, animal) ; laissés vides, toute
-  détection correspond. Les actions suivantes peuvent lire ce qui a bougé
-  avec `{{triggerEvent.data.target}}`.
-- **Identifier un appareil** (action) — fait se signaler l'appareil choisi.
-  Elle indique si l'appareil a pu se signaler, pour que les actions
-  suivantes puissent en dépendre.
+**Éteindre** est un appui court sur le bouton d'alimentation (kvmd `off`, qui ne fait rien quand la machine
+est déjà éteinte) : le système s'arrête proprement, comme avec le bouton du boîtier. Il ne demande aucune
+option et n'est retenu ni par une pause, ni par une lecture, ni par une autre commande en cours. Il n'est
+refusé que si rien ne peut joindre le PiKVM sûrement : intégration non configurée, certificat non épinglé,
+identifiants refusés, ou 2FA sans session. Quand le PiKVM ne le prend pas (occupé, erreur 5xx ou 429,
+injoignable), il est réessayé dans les 3,5 s qu'attend Gladys ; toujours pas pris, il est gardé (aussi après
+un redémarrage) et renvoyé par des lectures faites toutes les 10 s, seulement tant qu'elles montrent la
+machine allumée, 3 fois et 2 minutes après le clic au plus, puis abandonné dès qu'une lecture montre la
+machine éteinte. Un arrêt parti sans réponse est signalé « envoyé, sans confirmation » et n'est pas renvoyé
+de lui-même (un second appui pourrait être pris aussi).
 
-## Tableau de bord
+**Allumer**, **Forcer l'extinction** (bouton d'alimentation maintenu 5 s : les données non enregistrées sont
+perdues) et **Reset** (redémarrage brutal) sont désactivés par défaut : cochez leur option dans la
+configuration. Chacun :
 
-Ajoutez le widget **État de la démo** à un tableau de bord : il affiche en
-direct la température de la station météo et la puissance de la prise du
-bureau, la connexion utilisée par la prise (en orange si dégradée) et la
-position observée. Son bouton **Identifier la lampe** fait se signaler la
-lampe de démonstration.
+- lit l'état ATX juste après votre clic et décide d'après lui : Allumer seulement quand le voyant se lit
+  éteint (sinon « déjà allumée, rien envoyé »), Forcer l'extinction seulement quand il se lit allumé, Reset
+  seulement sur une machine qui se lit allumée ;
+- est refusé quand l'ATX est occupé ou désactivé, pendant une pause 429/5xx et, pour Allumer et Reset,
+  pendant 1 minute après un arrêt ou une extinction forcée ;
+- passe un à la fois, un par 30 secondes ;
+- est revérifié (option, arrêt arrivé entre-temps, pause) juste avant l'envoi, et part dans les 3,5 s du
+  clic ou pas du tout.
 
-## Dépannage
+Un arrêt annule un Allumer ou un Reset pas encore envoyé. La réponse d'un bouton est affichée dans le statut
+de l'intégration pendant 10 minutes (« pris par le PiKVM », « envoyé, sans confirmation », « rien envoyé »),
+et des relectures suivent pour confirmer le voyant.
 
-L'intégration journalise tout ce qu'elle fait : consultez les logs de
-l'intégration depuis l'interface Gladys (ou `docker logs` sur l'hôte) avec
-`LOG_LEVEL=debug` pour le détail complet.
+Les boutons sont des boutons poussoirs, jamais des interrupteurs : un « tout éteindre » d'un assistant
+vocal ou d'une scène ne les atteint pas.
+
+## Lectures
+
+L'état ATX est lu à l'intervalle choisi (10 à 600 s, 30 s par défaut), jamais plus tôt après la lecture
+précédente, redémarrage du conteneur compris (hors lectures faites pour un bouton, pour le confirmer ou pour
+un arrêt gardé) ; les données du PiKVM (température) toutes les 5 minutes au
+plus. Une erreur 429 ou 5xx met les lectures en pause (1 minute à 6 heures, gardée au redémarrage). Un 403
+sur la lecture ATX signifie que l'identifiant ou le mot de passe est refusé : rien n'est réessayé avant que
+vous en enregistriez d'autres ou cliquiez sur **Tester la connexion**. Un 401/403 sur les données du PiKVM
+n'est pas un refus (cette lecture est seulement espacée).
+
+## Confidentialité et sécurité
+
+Le mot de passe ne part que vers l'adresse configurée, dans les en-têtes `X-KVMD-User` / `X-KVMD-Passwd`,
+sur une connexion dont le certificat est celui épinglé (vérifié avant le premier octet). Il n'est jamais
+journalisé, ni écrit dans `/data`, un statut ou une erreur. `/data` ne garde que l'empreinte du certificat
+épinglé, une marque de 6 bits des identifiants refusés (qui ne permet pas de les retrouver), la fin d'une
+pause, l'heure de la dernière lecture, la garde d'arrêt et un arrêt gardé.
+
+## Limites
+
+- Jamais testé avec un vrai PiKVM.
+- Un PiKVM par intégration.
+- Ni vidéo, ni clavier, ni souris, ni stockage, ni GPIO : alimentation ATX et voyants seulement.
+- L'identifiant de l'appareil vient de l'adresse saisie : changer d'adresse crée un nouvel appareil.
+
+## Licence
+
+Apache-2.0. kvmd, le logiciel du PiKVM, est sous GPL-3.0 : cette intégration appelle seulement son API HTTP
+documentée et ne contient rien de son code.

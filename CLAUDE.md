@@ -9,68 +9,77 @@ A Gladys Assistant **external integration**: a Node.js service (Node 22+, ESM,
 no build step) that runs in its own sandboxed Docker container and talks to
 Gladys through
 [`@gladysassistant/integration-sdk`](https://github.com/GladysAssistant/integration-sdk-js),
-its only runtime dependency. It started from the official JavaScript template.
+its only runtime dependency. It drives the ATX power of the machine wired to a
+PiKVM through the kvmd HTTP API (https://docs.pikvm.org/api/). kvmd is GPL-3.0:
+call its API, never copy nor port its code.
 
 ## Commands
 
 ```bash
 npm install
-npm test                                  # node --test, the built-in runner
-node --test test/devices.test.js          # one file
-node --test --test-name-pattern "plug"    # tests whose name matches
+gi test                                   # or npm test (node --test --test-timeout=60000)
+node --test test/commands.test.js         # one file (through memcap on the dev VM)
 npm run lint                              # ESLint
 npm run format:check                      # Prettier, as the CI runs it
-npm run format                            # Prettier, fix in place
-npx github:GladysAssistant/integration-store .   # store admission checks
+npm run cover                             # cover.png (800x534), plain Node
+memcap node scripts/mutants.mjs "$(mktemp -d)"   # mutants of the guards, one at a time
 ```
-
-The CI (`.github/workflows/ci.yml`) runs `format:check`, `lint` and `test` on
-Node 22 and 24, and builds the Docker image: run the three commands before
-pushing.
 
 ## Architecture
 
 ```
-index.js                          SDK wiring only: handlers registered before connect()
-src/devices/index.js              registry of the device blueprints + dispatch helpers
-src/devices/<type>.js             one device type per file (buildDevice, onPoll, onSetValue...)
-src/scenes.js                     scene action handlers (manifest `scene_actions`)
-src/widgets.js                    dashboard widget handlers (manifest `widgets`)
-src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
-src/weather.js                    example driver (Open-Meteo)
-gladys-assistant-integration.json manifest: name, config_schema, actions, image...
-docs/en.md, docs/fr.md            user documentation, re-hosted by Gladys (mandatory)
-test/                             node --test, against the SDK's fake Gladys (integration-sdk/testing)
-.github/scripts/release.mjs       release helpers (manifest bump, changelog), tested in test/
+index.js                          SDK wiring only (src/handlers.js registers before connect())
+src/app.js                        PikvmApp: lifecycle, reads, buttons, kept shutdown, config buttons
+src/kvmd.js                       kvmd client on a pinned TLS socket, answers, 2FA login
+src/devices.js                    the Gladys device (pure)
+src/store.js                      /data: pins, refused-credentials mark, pause, stop guard, kept shutdown
+src/config.js                     DEFAULT_CONFIG (mirrors the manifest) + normalization
+src/i18n.js                       texts in English and French
+test/helpers/fakePikvm.js         simulated PiKVM (HTTPS) on 127.0.0.1
+test/kit/                         parts of gladys-testkit (clocks, certificates)
+scripts/mutants.mjs               mutants of the guards (list and runner)
 ```
+
+## Safety rules of this integration
+
+- **Shut down is protective** (kvmd `off`: a short press, nothing when the
+  machine is off): no option, not held back by a pause, a read or a command in
+  flight. Refused only without a usable path (config error, no pin, refused
+  credentials, 2FA without session). Retried within the 3.5 s ack budget when
+  not taken (409, 5xx, 429, not sent); then kept in /data (2 min, 3 answered
+  sends) and sent again only by its own reads (every 10 s) that show the
+  machine on; dropped by any read showing it off. A send that left without an
+  answer is never sent again.
+- **Power on, Force power off, Reset are off by default** (one option each),
+  `button`/`push` features, never a switch. Each decides on a read of the ATX
+  made after the click, is checked again right before the first byte
+  (`beforeSend`: option, stop count, pause, stop guard, deadline), runs one at
+  a time, one per 30 s, and leaves within 3.5 s or not at all. Power on and
+  Reset are refused for 60 s after a shutdown or forced power off (guard in
+  /data).
+- **Nothing sent before a stop leaves after it**: the stop count (`epoch`) is
+  checked after the read and in `beforeSend`.
+- The password goes only to the configured address, in the kvmd headers, on a
+  connection whose certificate is the pinned one, checked before the first
+  byte; never logged, never in /data, a status nor an error. The 2FA token
+  lives in memory only; the code is never kept. The first certificate is
+  trusted on two clicks (or typed); a changed one is never learnt alone.
+- A 403 on the ATX read with the headers refuses the credentials (6-bit mark
+  in /data); a 401/403 on `/api/info` or a command never does.
+- Clocks: monotonic for every decision; wall time only for /data.
 
 ## Rules
 
-- **External ids are forever.** Build them with
-  `gladys.externalIds(type, platformId)`, `platformId` being the unique id the
-  platform gives the device (serial, cloud id, MAC), never a label. Gladys keys
-  devices, their history, scenes and dashboards on them: changing one creates a
-  new device and orphans the old one. The same goes for every key users store:
-  manifest `config_schema`, `actions`, widget and scene keys, feature keys.
-- **The container rootfs is read-only.** Write only under `/data`, the one
-  writable volume. Never log tokens, passwords or API keys.
-- **Versions belong to the Release workflow** (Actions → Release). Never edit
-  `version` in `package.json` or in the manifest, nor the `docker_image` tag,
-  by hand — except on the README's hand-pushed tag path, which bumps all three
-  together before tagging. `test/manifest.test.js` checks they agree.
-- **Changelog.** Every user-visible change adds a line under `## [Unreleased]`
-  in `CHANGELOG.md` (`### Added`, `Changed`, `Fixed`, `Removed`, `Security`).
-  Never write a version heading: the Release workflow moves the section, and it
-  becomes the notes of the GitHub Release.
-- **Manifest.** Texts are multi-language objects `{ "en": ..., "fr": ... }`:
-  `label`, `description` and `placeholder` alike, never a plain string. The
-  catalog `description` holds 10 to 100 characters per language. A field the
-  older cores do not know needs a higher `gladys_version` minimum
-  (`categories`: 4.86.0; `widgets`, `scene_triggers`, `scene_actions`,
-  `type: "provider"`: 5.1.0). `test/manifest.test.js` ties the manifest to the
-  code (defaults, action, scene and widget handlers): change both sides
-  together.
-- **User-facing text** is bilingual (English and French): action messages,
-  manifest texts, and `docs/en.md` / `docs/fr.md`, kept in sync.
-- **Style.** Prettier formats, ESLint catches mistakes. Comments explain why,
-  in English. Tests never touch the network.
+- **External ids are forever**: `pikvm:<address id>` (config.js `addressId`),
+  built with `gladys.externalIds`. The same goes for the manifest keys and the
+  feature keys (`power`, `hdd`, `pikvm_temperature`, `power_on`, `shutdown`,
+  `force_off`, `reset`).
+- **A device published again never loses a feature** (`withCreatedFeatures`).
+- **The container rootfs is read-only**: write only under `/data`.
+- **Versions belong to the Release workflow**; `test/manifest.test.js` checks
+  that package.json, the lock and the manifest agree.
+- **Changelog**: every user-visible change under `## [Unreleased]`.
+- **User-facing text** is bilingual (English and French), docs in sync with
+  the code.
+- **Tests never touch the network** beyond 127.0.0.1; every wait is bounded
+  (a test fails, it never hangs).
