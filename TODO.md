@@ -88,3 +88,4 @@ Handoff document: what is done, what was decided, what comes next.
 - Check the error statuses of kvmd for a busy ATX (409 assumed, any 4xx is
   "not done") and for a disabled ATX.
 - Maybe: `/api/atx/click` buttons, the MSD and GPIO (out of v1).
+- [ ] r3 mineurs : test du contrôle « même arrêt gardé » dans beforeSend (app.js:1273, scénario s10 de pikvm-r3-scen), test de l'annulation traitée comme panne (app.js:1286).
