@@ -1,6 +1,6 @@
 {
   "name": "gladys-pikvm",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Gladys Assistant external integration for PiKVM: ATX power of the machine (power on, shut down, forced power off, reset) and its power and disk LEDs, through the local HTTPS API with a pinned certificate. Unofficial, not affiliated with PiKVM.",
   "type": "module",

@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-15
+
 ### Added
 
 - PiKVM over its local HTTPS API (kvmd): one device with the power and disk
@@ -29,3 +31,6 @@ the notes of the version's GitHub Release.
 - A kept shutdown is dropped as soon as a Power on or Reset leaves, and its
   tries keep the address, certificate and credentials of the PiKVM clicked.
 - 429/5xx pause (1 min to 6 h) kept in /data; the last read paces a restart.
+
+[Unreleased]: https://github.com/LM1LC3N7/gladys-pikvm/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LM1LC3N7/gladys-pikvm/releases/tag/v0.1.1
